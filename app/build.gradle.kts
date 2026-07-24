@@ -9,6 +9,13 @@ android {
     namespace = "com.whispera.android"
     compileSdk = 34
 
+    // AGP 8+ disables BuildConfig generation by default; our productFlavors
+    // (offlineFull / liteCloud) emit buildConfigField("BUNDLE_MODELS", ...),
+    // so we must explicitly re-enable it.
+    buildFeatures {
+        buildConfig = true
+    }
+
     defaultConfig {
         applicationId = "com.whispera.android"
         minSdk = 26
