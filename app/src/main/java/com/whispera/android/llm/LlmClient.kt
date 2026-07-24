@@ -145,9 +145,14 @@ class LlmClient(
     private fun jsonEscape(s: String): String =
         s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
 
-    companion object {
-        data class ChatMessage(val role: String, val content: String)
+    /**
+     * Conversation message exchanged with the LLM. Declared as a (non-inner)
+     * nested class on LlmClient so external callers use `LlmClient.ChatMessage`
+     * — living inside `companion object` makes it unreachable via that path.
+     */
+    data class ChatMessage(val role: String, val content: String)
 
+    companion object {
         fun fromConfig(c: AppConfig): LlmClient = LlmClient(
             baseUrl = c.llmBaseUrl,
             apiKey = c.llmApiKey,
