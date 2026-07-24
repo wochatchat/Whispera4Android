@@ -1,0 +1,13 @@
+<resources>
+    <color name="bg_dark">#FF101318</color>
+    <color name="surface">#FF1B1F26</color>
+    <color name="surface_variant">#FF2A2F38</color>
+    <color name="primary">#FF7DD3FC</color>
+    <color name="primary_activated">#FF38BDF8</color>
+    <color name="warning">#FFFBBF24</color>
+    <color name="danger">#FFF87171</color>
+    <color name="text_primary">#FFECEFF4</color>
+    <color name="text_secondary">#FF9CA3AF</color>
+    <color name="user_bubble">#FF2A2F38</color>
+    <color name="assistant_bubble">#FF1E3A5F</color>
+</resources>
