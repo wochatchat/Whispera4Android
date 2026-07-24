@@ -9,6 +9,9 @@ on:
       - 'build.gradle.kts'
       - 'settings.gradle.kts'
       - 'gradle.properties'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - 'gradle/wrapper/**'
       - '.github/workflows/build-apk.yml'
     # Allow manual trigger from the Actions tab.
   workflow_dispatch:

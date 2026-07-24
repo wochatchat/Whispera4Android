@@ -3,6 +3,8 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+import java.util.Properties
+
 android {
     namespace = "com.whispera.android"
     compileSdk = 34
@@ -43,7 +45,7 @@ android {
     //    release APK requires zero setup. Everyone shares this key — see README.
     val localKeystoreProps = rootProject.file("keystore.properties")
     if (localKeystoreProps.exists()) {
-        val props = java.util.Properties().apply { localKeystoreProps.inputStream().use { load(it) } }
+        val props = Properties().apply { localKeystoreProps.inputStream().use { load(it) } }
         signingConfigs {
             create("release") {
                 keyAlias = props.getProperty("keyAlias")
