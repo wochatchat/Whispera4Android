@@ -41,12 +41,17 @@ echo "ASR model:     $ASR_CHOICE"
 mkdir -p "$DEST"
 
 # Helper: download to a target path, using curl or wget (whichever is available).
+# GitHub Releases occasionally returns 502/503/504 from its CDN; we retry hard so
+# a transient gateway hiccup doesn't kill the whole build.
 dl() {
   url="$1"; out="$2"
   if command -v curl >/dev/null 2>&1; then
-    curl -fL --retry 3 --retry-delay 5 -o "$out" "$url"
+    curl -fL --retry 8 --retry-all-errors --retry-delay 10 \
+         --connect-timeout 30 --max-time 1200 \
+         -o "$out" "$url"
   elif command -v wget >/dev/null 2>&1; then
-    wget -q --tries=3 --retry-connrefused -O "$out" "$url"
+    wget -q --tries=8 --waitretry=10 --retry-connrefused --timeout=30 \
+         -O "$out" "$url"
   else
     echo "✗ neither curl nor wget is available" >&2; exit 1
   fi
