@@ -8,10 +8,13 @@ captures/
 local.properties
 
 # === Signing / secrets ===
+# Private user keystore (output of scripts/gen-keystore.sh) — NEVER commit.
 release-key.jks
 *.jks
-*.keystore
 keystore.properties
+# Note: app/keystore/builtin-release.p12 is the *public* builtin test key and
+# IS intentionally committed so anyone can build a signed release APK with zero setup.
+# Do NOT add `*.p12` here or the builtin key would be ignored too.
 keystore/*.jks
 
 # === Android native libs downloaded by setup_models.sh ===

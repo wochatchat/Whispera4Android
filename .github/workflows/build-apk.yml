@@ -1,0 +1,108 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'scripts/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - '.github/workflows/build-apk.yml'
+    # Allow manual trigger from the Actions tab.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          sdk-platform: 34
+          sdk-build-tools: 34.0.0
+          ndk-version: '26.1.10909125'
+
+      - name: Cache Gradle and sherpa-onnx AAR
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            app/libs
+            app/src/main/assets/models
+          key: whispera4android-gradle-${{ hashFiles('**/*.gradle.kts') }}-sherpa-1.13.4-models-v1
+          restore-keys: whispera4android-gradle-
+
+      - name: Download models & sherpa-onnx AAR
+        shell: bash
+        run: ./scripts/setup_models.sh --assets
+
+      - name: Verify builtin keystore is committed
+        shell: bash
+        run: |
+          if [[ ! -f app/keystore/builtin-release.p12 ]]; then
+            echo "✗ builtin-release.p12 missing — generate it with ./scripts/gen-builtin-keystore.sh"
+            exit 1
+          fi
+          echo "✓ Built-in test keystore present: app/keystore/builtin-release.p12"
+
+      - name: Make gradlew executable
+        shell: bash
+        run: chmod +x ./gradlew || true
+
+      - name: Build signed release APK (offlineFull flavor)
+        shell: bash
+        run: ./gradlew assembleOfflineFullRelease --console=plain --stacktrace
+
+      - name: Locate built APK
+        id: locate_apk
+        shell: bash
+        run: |
+          set -x
+          APK=$(find app/build/outputs/apk -name '*.apk' -print -quit)
+          if [[ -z "$APK" ]]; then
+            echo "✗ No APK produced"
+            exit 1
+          fi
+          echo "apk_path=$APK" >> "$GITHUB_OUTPUT"
+          ls -lh "$APK"
+
+      - name: Upload APK as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Whispera4Android-offlineFull-release
+          path: ${{ steps.locate_apk.outputs.apk_path }}
+          if-no-files-found: error
+          retention-days: 30
+
+      # Also build the liteCloud flavor (much smaller, no bundled models).
+      - name: Build signed release APK (liteCloud flavor)
+        shell: bash
+        run: ./gradlew assembleLiteCloudRelease --console=plain --stacktrace || true
+
+      - name: Upload liteCloud APK (if any)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Whispera4Android-liteCloud-release
+          path: app/build/outputs/apk/liteCloud/release/*.apk
+          if-no-files-found: ignore
+          retention-days: 30

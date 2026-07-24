@@ -28,22 +28,13 @@ class MainActivity : FragmentActivity() {
 
     private fun buildPipeline() {
         val cfg = config
-        // Model files live under filesDir/models/<spec>/ (populated by setup_models.sh).
-        val vadFile = java.io.File(filesDir, "models/${ModelManager.VAD.dirName}/silero_vad.onnx")
-        val asrDir = if (cfg.asrModelDir.startsWith("zipformer")) {
-            ModelManager.modelDir(this, ModelManager.ASR_ZIPFORMER.dirName)
-        } else {
-            ModelManager.modelDir(this, ModelManager.ASR_SENSEVOICE.dirName)
-        }
-        val ttsDir = ModelManager.modelDir(this, ModelManager.TTS_KOKORO.dirName)
-
-        val vad = VadSession.fromSilero(vadFile, cfg.vadThreshold, cfg.vadMinSilenceMs)
+        val vad = VadSession.fromContext(this, cfg.vadThreshold, cfg.vadMinSilenceMs)
         val asr = if (cfg.asrModelDir.startsWith("zipformer")) {
-            AsrEngine.fromZipformer(asrDir)
+            AsrEngine.fromZipformerContext(this)
         } else {
-            AsrEngine.fromSenseVoice(asrDir, cfg.asrLanguage, cfg.asrUseItN)
+            AsrEngine.fromContext(this, cfg.asrLanguage, cfg.asrUseItN)
         }
-        val tts = TtsEngine.fromKokoro(ttsDir)
+        val tts = TtsEngine.fromContext(this)
         pipeline = RealtimePipeline(config = cfg, vad = vad, asr = asr, tts = tts)
     }
 

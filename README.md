@@ -54,19 +54,35 @@ cd Whispera4Android
 #     - kokoro-multi-lang-v1_1/*           (~200 MB，多音色)
 #   也会下载 sherpa-onnx AAR 到 app/libs/
 
-# 3. 生成你自己的 release keystore（仅一次，自动写入 keystore.properties）
-./scripts/gen-keystore.sh
-#   或 --auto 模式（仅自测用弱口令）
-# ⚠ 生成的 release-key.jks 与 keystore.properties 都在 .gitignore 中，
-#   绝不要提交到 git。仓库内能复现的只有 keystore.properties.example 模板。
+# 3. 直接构建——内置签名 key，开箱即用
+./scripts/build-release.sh
+# ↑ 无需任何 keystore 配置即可生成签名 release APK！
+#
+# 项目自带了一把 PUBLIC 测试 key (app/keystore/builtin-release.p12)：
+#   alias: whispera-builtin
+#   passwords: whispera (公开)
+# clone 即可 build 出已签 release APK，零配置。
+# ⚠ 这把 key 所有人都能拿到，仅用于开源测试构建。
+#   千万别用它上 Google Play；想上正式版请运行：
+./scripts/gen-keystore.sh    # 生成你自己的私有 keystore（输出会被 .gitignore 排除）
 
-# 4. 构建
-./scripts/build-debug.sh        # 或 ./scripts/build-release.sh
-# 产物：app/build/outputs/apk/offlineFull/debug/app-offlineFull-debug.apk
+# 产物：app/build/outputs/apk/offlineFull/release/app-offlineFull-release.apk
+# debug 版：./scripts/build-debug.sh
 
-# 5. 安装到手机（需 adb）
+# 4. 安装到手机（需 adb）
 ./scripts/install.sh
 ```
+
+## GitHub Actions 自动构建
+
+仓库内置了 `.github/workflows/build-apk.yml`：
+
+- 推送 main 分支（修改了 app/、scripts/、build 配置）或手动触发 workflow 后，CI 自动：
+  1. 装 JDK 17 + Android SDK + NDK
+  2. 下载 ONNX 模型和 sherpa-onnx AAR
+  3. 用**内置 public test key** 给 release APK 签名
+  4. 上传 `Whispera4Android-offlineFull-release` 和 `Whispera4Android-liteCloud-release` 两个 artifact
+- 在仓库的 **Actions** 标签页能直接下载产物 APK，30 天保留期
 
 ## 两套 product flavor
 
@@ -121,13 +137,13 @@ Kokoro 是 GitHub 上目前跑得动的 ONNX TTS 里的**音质最好**的中文
 
 ```
 app/
-  build.gradle.kts                  # 含 signingConfigs + productFlavors (offlineFull / liteCloud)
+  build.gradle.kts                  # signingConfigs 用内置 public test key，productFlavors (offlineFull / liteCloud)
+  keystore/builtin-release.p12      # 内置 PUBLIC 测试 keystore（已提交），clone 即可签 release
   src/main/
     AndroidManifest.xml
     java/com/whispera/android/
       config/AppConfig.kt           # 持久配置（SharedPreferences 层）
       config/ModelManager.kt        # 模型文件查找与解包
-      audio/                        # AudioRecord/AudioTrack 封装
       vad/VadSession.kt             # 直译自原版 vad_session.py
       asr/AsrEngine.kt              # sherpa-onnx OfflineRecognizer 封装
       llm/LlmClient.kt             # OkHttp SSE 流式客户端
@@ -141,12 +157,14 @@ app/
     assets/models/                  # gitignored；setup_models.sh 写入
 scripts/
   setup_models.sh                   # 下载 VAD/ASR/TTS ONNX 模型 + sherpa AAR
-  gen-keystore.sh                   # 生成 release-key.jks + keystore.properties
+  gen-builtin-keystore.sh           # 生成内置 PUBLIC 测试 keystore（已提交，仅项目初始化用）
+  gen-keystore.sh                   # 生成你自己的私有 release keystore（gitignored）
   build-debug.sh                    # gradlew assembleOfflineFullDebug
   build-release.sh                  # gradlew assembleOfflineFullRelease（签名版）
   install.sh                        # adb install -r
-keystore.properties.example          # 模板；真正不会被提交
-.gitignore                          # 排除 model/jks/secrets
+keystore.properties.example          # 模板；用户私有 key 配置（提交进 git）
+.gitignore                          # 排除模型/私有 jks/keystore.properties
+.github/workflows/build-apk.yml    # GitHub Actions：自动拉模型 + 构建签名 APK + 上传 artifact
 ```
 
 ## 许可证

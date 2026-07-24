@@ -136,18 +136,19 @@ class VadSession(
     }
 
     companion object {
-        /** Build a Silero VAD-backed session from a silero_vad.onnx file. */
-        fun fromSilero(
-            modelFile: File,
-            threshold: Float = 0.5f,
-            minSilenceMs: Int = 800,
-            minSpeechMs: Int = 128,
+        /** Build a Silero VAD-backed session from model.location (asset-relative OR absolute path). */
+        private fun fromConfig(
+            modelPath: String,
+            am: android.content.res.AssetManager?,
+            threshold: Float,
+            minSilenceMs: Int,
+            minSpeechMs: Int,
         ): VadSession {
-            require(modelFile.exists()) { "VAD model not found: ${modelFile.absolutePath}" }
             val vad = Vad(
+                assetManager = am,
                 config = VadModelConfig(
                     sileroVadModelConfig = SileroVadModelConfig(
-                        model = modelFile.absolutePath,
+                        model = modelPath,
                         threshold = threshold,
                         minSilenceDuration = minSilenceMs / 1000.0f,
                         minSpeechDuration = minSpeechMs / 1000.0f,
@@ -168,5 +169,31 @@ class VadSession(
                 )
             )
         }
+
+        /** Build from Context — picks assets OR files depending on which is present. */
+        fun fromContext(
+            ctx: android.content.Context,
+            threshold: Float = 0.5f,
+            minSilenceMs: Int = 800,
+            minSpeechMs: Int = 128,
+        ): VadSession {
+            val spec = com.whispera.android.config.ModelManager.VAD
+            val onDisk = com.whispera.android.config.ModelManager.isOnDisk(ctx, spec)
+            val am: android.content.res.AssetManager? = if (onDisk) null else ctx.assets
+            val resolved = com.whispera.android.config.ModelManager.resolve(ctx, spec, "silero_vad.onnx")
+            val modelPath = when (resolved) {
+                is com.whispera.android.config.ModelManager.ModelPath.Disk -> resolved.absolutePath
+                is com.whispera.android.config.ModelManager.ModelPath.Asset -> resolved.relativePath
+            }
+            return fromConfig(modelPath, am, threshold, minSilenceMs, minSpeechMs)
+        }
+
+        /** Backwards-compatible: build from a silero_vad.onnx File (takes absolute path). */
+        fun fromSilero(
+            modelFile: File,
+            threshold: Float = 0.5f,
+            minSilenceMs: Int = 800,
+            minSpeechMs: Int = 128,
+        ): VadSession = fromConfig(modelFile.absolutePath, null, threshold, minSilenceMs, minSpeechMs)
     }
 }

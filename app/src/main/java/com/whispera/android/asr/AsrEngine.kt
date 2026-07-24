@@ -1,28 +1,29 @@
 package com.whispera.android.asr
 
+import android.content.Context
+import android.content.res.AssetManager
 import com.k2fsa.sherpa.onnx.OfflineRecognizer
 import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig
 import com.k2fsa.sherpa.onnx.OfflineSenseVoiceModelConfig
 import com.k2fsa.sherpa.onnx.OfflineModelConfig
 import com.k2fsa.sherpa.onnx.OfflineTransducerModelConfig
 import com.k2fsa.sherpa.onnx.FeatureConfig
+import com.whispera.android.config.ModelManager
 import java.io.File
 
 /**
- * Sherpa-ONNX offline ASR front-end — wraps an [OfflineRecognizer].
+ * Sherpa-ONNX offline ASR front-end.
  *
- * Two supported models:
- *  - SenseVoice ONNX (same family Whispera serves via FunASR, exported to ONNX):
- *    good accuracy on zh/ja/ko/yue/en, ~500 MB. The right default.
- *  - Zipformer transducer (offline, pure Chinese): much smaller (~80 MB) when
- *    SenseVoice is too heavy for a given phone.
+ * Models can live in two places:
+ *   - Bundled assets (offlineFull flavor): passed to Sherpa via [AssetManager]
+ *   - Local files (liteCloud / sideloaded): passed as absolute paths
  *
- * Because this is offline (utterance-level) ASR, [recognize] is only called once
- * per finished user turn — after [VadSession] reports SPEECH_END. RTF is ~0.1
- * on arm64 CPU for short turns, so latency stays bounded.
+ * Either way, [fromContext] picks whichever is present and builds the recognizer.
+ *
+ * Offline (utterance-level) recognizer — [recognize] is invoked once per finished user turn
+ * (after [VadSession] reports SPEECH_END). RTF is ~0.1 on arm64 CPU for short turns.
  */
 class AsrEngine(private val recognizer: OfflineRecognizer) {
-
     private val sampleRate = 16000
 
     fun recognize(samples: FloatArray): String {
@@ -39,60 +40,75 @@ class AsrEngine(private val recognizer: OfflineRecognizer) {
     fun release() { recognizer.release() }
 
     companion object {
-        /** Build over a SenseVoice ONNX model directory (model.onnx + tokens.txt). */
-        fun fromSenseVoice(
-            dir: File,
+        /** Build an [AsrEngine] for the SenseVoice model under ModelManager.ASR_SENSEVOICE. */
+        fun fromContext(
+            ctx: Context,
             language: String = "zh",
             useItN: Boolean = true,
-            numThreads: Int = 2,
         ): AsrEngine {
-            val model = File(dir, "model.onnx")
-            val tokens = File(dir, "tokens.txt")
-            require(model.exists() && tokens.exists()) {
-                "SenseVoice model not found at $dir (need model.onnx + tokens.txt)"
+            val spec = ModelManager.ASR_SENSEVOICE
+            val modelPath = ModelManager.resolve(ctx, spec, "model.int8.onnx").let {
+                if (it is ModelManager.ModelPath.Disk) it.absolutePath
+                else "${ModelManager.assetDir(spec)}/model.int8.onnx"
             }
+            val tokensPath = ModelManager.resolve(ctx, spec, "tokens.txt").let {
+                if (it is ModelManager.ModelPath.Disk) it.absolutePath
+                else "${ModelManager.assetDir(spec)}/tokens.txt"
+            }
+            val am = if (ModelManager.isOnDisk(ctx, spec)) null else ctx.assets
+            require(modelExists(ctx, spec, modelPath)) { "SenseVoice model not available: $modelPath" }
+
             val config = OfflineRecognizerConfig(
                 featConfig = FeatureConfig(sampleRate = 16000, featureDim = 80),
                 modelConfig = OfflineModelConfig(
                     senseVoice = OfflineSenseVoiceModelConfig(
-                        model = model.absolutePath,
+                        model = modelPath,
                         language = language,
                         useInverseTextNormalization = useItN,
                     ),
-                    tokens = tokens.absolutePath,
-                    numThreads = numThreads,
+                    tokens = tokensPath,
+                    numThreads = 2,
                     modelType = "sense_voice",
                 ),
             )
-            return AsrEngine(OfflineRecognizer(config = config))
+            return AsrEngine(OfflineRecognizer(assetManager = am, config = config))
         }
 
-        /** Build over an offline Zipformer transducer directory. */
-        fun fromZipformer(
-            dir: File,
-            numThreads: Int = 2,
+        private fun modelExists(ctx: Context, spec: ModelManager.ModelSpec, modelPath: String): Boolean =
+            ModelManager.isInstalled(ctx, spec)
+
+        /** Build over an offline Zipformer transducer directory (lighter pure-Chinese alternative). */
+        fun fromZipformerContext(
+            ctx: Context,
         ): AsrEngine {
-            val encoder = File(dir, "encoder-epoch-99-avg-1.onnx")
-            val decoder = File(dir, "decoder-epoch-99-avg-1.onnx")
-            val joiner = File(dir, "joiner-epoch-99-avg-1.onnx")
-            val tokens = File(dir, "tokens.txt")
-            require(encoder.exists() && decoder.exists() && joiner.exists() && tokens.exists()) {
-                "Zipformer model file missing under $dir"
-            }
+            val spec = ModelManager.ASR_ZIPFORMER
+            val am = if (ModelManager.isOnDisk(ctx, spec)) null else ctx.assets
+            val dir = if (ModelManager.isOnDisk(ctx, spec)) ModelManager.diskDir(ctx, spec) else null
+            val encoder = resolveOr(spec, "encoder-epoch-99-avg-1.onnx", dir, ctx)
+            val decoder = resolveOr(spec, "decoder-epoch-99-avg-1.onnx", dir, ctx)
+            val joiner  = resolveOr(spec, "joiner-epoch-99-avg-1.onnx",  dir, ctx)
+            val tokens  = resolveOr(spec, "tokens.txt", dir, ctx)
             val config = OfflineRecognizerConfig(
                 featConfig = FeatureConfig(sampleRate = 16000, featureDim = 80),
                 modelConfig = OfflineModelConfig(
                     transducer = OfflineTransducerModelConfig(
-                        encoder = encoder.absolutePath,
-                        decoder = decoder.absolutePath,
-                        joiner = joiner.absolutePath,
+                        encoder = encoder, decoder = decoder, joiner = joiner,
                     ),
-                    tokens = tokens.absolutePath,
-                    numThreads = numThreads,
+                    tokens = tokens,
+                    numThreads = 2,
                     modelType = "transducer",
                 ),
             )
-            return AsrEngine(OfflineRecognizer(config = config))
+            return AsrEngine(OfflineRecognizer(assetManager = am, config = config))
+        }
+
+        private fun resolveOr(spec: ModelManager.ModelSpec, name: String, diskDir: File?, ctx: Context): String {
+            if (diskDir != null) {
+                val f = File(diskDir, name)
+                if (f.exists()) return f.absolutePath
+            }
+            // Asset path mode.
+            return "${ModelManager.assetDir(spec)}/$name"
         }
     }
 }

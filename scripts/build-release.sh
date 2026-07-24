@@ -20,11 +20,12 @@ if [[ ! -f "$AAR" ]]; then
 fi
 
 PROPS="keystore.properties"
-if [[ ! -f "$PROPS" ]]; then
-  echo "✗ keystore.properties not found at repo root."
-  echo "  Run ./scripts/gen-keystore.sh once to generate a release keystore."
-  echo "  (see scripts/gen-keystore.sh for details; the output is gitignored by .gitignore)."
-  exit 1
+if [[ -f "$PROPS" ]]; then
+  echo "✓ Signing with your own keystore from keystore.properties"
+else
+  echo "ℹ keystore.properties not found — using the built-in public test key"
+  echo "  (app/keystore/builtin-release.p12, see README for caveats)."
+  echo "  For your own private key run ./scripts/gen-keystore.sh once."
 fi
 
 flavor="${1:-offlineFull}"
