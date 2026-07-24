@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.sp
  * ASR language. Each change is debounced by 500ms and propagated to the parent via onUpdate so
  * AppConfig is reloaded while a session is running.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsSheet(
     visible: Boolean,

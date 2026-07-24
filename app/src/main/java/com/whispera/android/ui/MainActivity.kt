@@ -65,6 +65,7 @@ class MainActivity : ComponentActivity() {
                     onStop = { pipe.stop() },
                     modelsReady = true,
                     settings = settings,
+                    onSettingsChange = { },
                     onUpdateSettings = { s -> persistSettings(s); settings = s },
                 )
             }

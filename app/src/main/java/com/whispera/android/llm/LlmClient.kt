@@ -77,7 +77,7 @@ class LlmClient(
             }
 
             override fun onClosed(eventSource: EventSource) { close() }
-            override fun onFailure(t: Throwable, response: Response?) {
+            override fun onFailure(eventSource: EventSource, t: Throwable, response: Response?) {
                 close(t)
             }
         })
