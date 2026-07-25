@@ -51,7 +51,10 @@ class MainActivity : ComponentActivity() {
 
             LaunchedEffect(Unit) {
                 if (modelsReady && pipeline == null) {
-                    try { buildPipeline() } catch (e: Exception) { modelsReady = false }
+                    // Catch Throwable (not just Exception): sherpa-onnx native init can
+                    // throw UnsatisfiedLinkError / OutOfMemoryError when a model fails to
+                    // load, which are Error subclasses that would otherwise crash the app.
+                    try { buildPipeline() } catch (e: Throwable) { modelsReady = false }
                 }
             }
 

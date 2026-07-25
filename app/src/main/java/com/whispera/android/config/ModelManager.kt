@@ -108,24 +108,54 @@ object ModelManager {
 
     /** Tiny shim: copy bundled assets to ctx.filesDir/models/. Used by liteCloud first-launch
      * logic in case a flavor bundles a few essential files (e.g. just the VAD ONNX).
-     * Returns the count of copied files. */
+     * Returns the count of copied files.
+     *
+     * NOTE: previous implementation called `assets.open("$ASSET_ROOT/$entry")` on every
+     * top-level entry — but those entries are *directories* (silero_vad/, sensevoice/,
+     * kokoro-multi-lang-v1_1/), so open() always threw IOException and was silently
+     * swallowed, meaning NOTHING was ever copied. Now we recurse. The on-disk copy is
+     * prefered by [isInstalled]/[resolve] anyway, so this only matters when a flavor
+     * ships partial assets that need to land on disk (e.g. a tiny VAD ONNX in lite
+     * builds) — but fixing it removes a footgun and stops the swallowed-exception noise. */
     fun copyBundledModels(ctx: Context): Int {
         val dest = rootDir(ctx)
         val assets = ctx.assets
-        var copied = 0
+        var copied = arrayOf(0)
         val list = try { assets.list(ASSET_ROOT) ?: emptyArray() } catch (e: Exception) { emptyArray() }
         for (entry in list) {
-            val target = File(dest, entry)
-            if (target.exists()) continue
-            try {
-                assets.open("$ASSET_ROOT/$entry").use { input ->
-                    target.outputStream().use { input.copyTo(it) }
-                }
-                copied++
-            } catch (e: Exception) {
-                // Asset may be a directory or an empty placeholder; skip.
-            }
+            copyAssetTree(assets, "$ASSET_ROOT/$entry", File(dest, entry), copied)
         }
-        return copied
+        return copied[0]
+    }
+
+    /** Recursively copy an asset path (file or directory) onto disk. */
+    private fun copyAssetTree(
+        am: AssetManager,
+        assetPath: String,
+        destFile: File,
+        counter: Array<Int>,
+    ) {
+        // Try listing: if it returns a non-empty array, treat as directory; else, open as file.
+        val children = try { am.list(assetPath) } catch (e: Exception) { null }
+        if (children != null && children.isNotEmpty()) {
+            destFile.mkdirs()
+            for (child in children) {
+                // Skip placeholder files committed to keep empty dirs in git.
+                if (child == ".gitkeep") continue
+                copyAssetTree(am, "$assetPath/$child", File(destFile, child), counter)
+            }
+            return
+        }
+        // File case — copy bytes.
+        if (destFile.exists()) return
+        try {
+            destFile.parentFile?.mkdirs()
+            am.open(assetPath).use { input ->
+                destFile.outputStream().use { input.copyTo(it) }
+            }
+            counter[0] = counter[0] + 1
+        } catch (e: Exception) {
+            // Could not open — skip.
+        }
     }
 }

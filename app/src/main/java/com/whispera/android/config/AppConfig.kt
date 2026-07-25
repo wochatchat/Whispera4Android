@@ -27,7 +27,7 @@ data class AppConfig(
     var ttsSpeakerId: Int = DEFAULT_SPEAKER_ID,
     var ttsSpeed: Float = 1.0f,
     // ASR
-    var asrModelDir: String = "sense Voice",
+    var asrModelDir: String = "sensevoice",
     var asrLanguage: String = "zh",
     var asrUseItN: Boolean = true,
     // VAD
@@ -60,7 +60,15 @@ data class AppConfig(
             c.ttsModelDir = prefs.getString("ttsModelDir", c.ttsModelDir) ?: c.ttsModelDir
             c.ttsSpeakerId = prefs.getInt("ttsSpeakerId", c.ttsSpeakerId)
             c.ttsSpeed = prefs.getFloat("ttsSpeed", c.ttsSpeed)
-            c.asrModelDir = prefs.getString("asrModelDir", c.asrModelDir) ?: c.asrModelDir
+            c.asrModelDir = (prefs.getString("asrModelDir", c.asrModelDir) ?: c.asrModelDir)
+            // Legacy default had a stray space ("sense Voice") that broke ModelManager
+            // spec lookups; normalize to the canonical directory name on load.
+            .let {
+                when (it.lowercase().trim()) {
+                    "sensevoice", "sense voice" -> "sensevoice"
+                    else -> it
+                }
+            }
             c.asrLanguage = prefs.getString("asrLanguage", c.asrLanguage) ?: c.asrLanguage
             c.asrUseItN = prefs.getBoolean("asrUseItN", c.asrUseItN)
             c.vadThreshold = prefs.getFloat("vadThreshold", c.vadThreshold)
