@@ -14,6 +14,18 @@ android {
     // so we must explicitly re-enable it.
     buildFeatures {
         buildConfig = true
+        // Compose: must be enabled here, AND composeOptions.kotlinCompilerExtensionVersion
+        // must be set below to match the Kotlin version — otherwise the Kotlin/JVM
+        // backend cannot see Compose inline functions (remember/mutableStateOf/…)
+        // and IR lowering aborts with "couldn't find inline method
+        // Landroidx/compose/runtime/ComposablesKt;.remember(...)".
+        compose = true
+    }
+
+    // Compose Compiler 1.5.8 is the version compatible with Kotlin 1.9.22
+    // (see https://developer.android.com/jetpack/androidx/releases/compose-kotlin).
+    composeOptions {
+        kotlinCompilerExtensionVersion = "1.5.8"
     }
 
     defaultConfig {
