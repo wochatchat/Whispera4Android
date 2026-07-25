@@ -55,6 +55,11 @@ jobs:
           restore-keys: whispera4android-gradle-
 
       - name: Download models & sherpa-onnx AAR
+        # Full model set (~500 MB: silero VAD 2 MB + SenseVoice int8 163 MB +
+        # Kokoro v1.1 350 MB) goes to app/src/main/assets/models so the
+        # offlineFull APK is self-contained. The liteCloud build below strips
+        # this directory first (see its step comments) so it ships lean and
+        # downloads models at runtime.
         shell: bash
         run: ./scripts/setup_models.sh --assets
 
@@ -72,6 +77,7 @@ jobs:
         run: chmod +x ./gradlew || true
 
       - name: Build signed release APK (offlineFull flavor)
+        # Models are in app/src/main/assets/models/ — this bundle is ~637 MB.
         shell: bash
         run: ./gradlew assembleOfflineFullRelease --console=plain --stacktrace
 
@@ -80,9 +86,9 @@ jobs:
         shell: bash
         run: |
           set -x
-          APK=$(find app/build/outputs/apk -name '*.apk' -print -quit)
+          APK=$(find app/build/outputs/apk -name 'app-offlineFull-release*.apk' -print -quit)
           if [[ -z "$APK" ]]; then
-            echo "✗ No APK produced"
+            echo "✗ No offlineFull APK produced"
             exit 1
           fi
           echo "apk_path=$APK" >> "$GITHUB_OUTPUT"
@@ -96,16 +102,44 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      # Also build the liteCloud flavor (much smaller, no bundled models).
-      - name: Build signed release APK (liteCloud flavor)
+      # Let liteCloud ship without bundled models (so the APK stays ~5 MB).
+      # Runtime downloads land under ctx.filesDir/models/ via app code; this
+      # step removes the heavy assets the offlineFull build stuffed above so
+      # the liteCloud flavor does not pick them up too. (Before this `rm`,
+      # BOTH flavors acquired the ~500 MB of ONNX — see global memory note —
+      # making the two APKs identical in size and useless for users wanting
+      # the lean download-on-demand build.)
+      - name: Strip bundled models for liteCloud build
         shell: bash
-        run: ./gradlew assembleLiteCloudRelease --console=plain --stacktrace || true
+        run: |
+          rm -rf app/src/main/assets/models
+          mkdir -p app/src/main/assets/models
+          touch app/src/main/assets/models/.gitkeep
+          echo "Models removed for liteCloud; assets/models now contains:"
+          ls -la app/src/main/assets/models
 
-      - name: Upload liteCloud APK (if any)
-        if: always()
+      - name: Build signed release APK (liteCloud flavor)
+        # Lean build — no bundled ONNX. Users download models at runtime.
+        shell: bash
+        run: ./gradlew assembleLiteCloudRelease --console=plain --stacktrace
+
+      - name: Locate liteCloud APK
+        id: locate_lite_apk
+        shell: bash
+        run: |
+          set -x
+          APK=$(find app/build/outputs/apk -name 'app-liteCloud-release*.apk' -print -quit)
+          if [[ -z "$APK" ]]; then
+            echo "✗ No liteCloud APK produced"
+            exit 1
+          fi
+          echo "apk_path=$APK" >> "$GITHUB_OUTPUT"
+          ls -lh "$APK"
+
+      - name: Upload liteCloud APK
         uses: actions/upload-artifact@v4
         with:
           name: Whispera4Android-liteCloud-release
-          path: app/build/outputs/apk/liteCloud/release/*.apk
-          if-no-files-found: ignore
+          path: ${{ steps.locate_lite_apk.outputs.apk_path }}
+          if-no-files-found: error
           retention-days: 30

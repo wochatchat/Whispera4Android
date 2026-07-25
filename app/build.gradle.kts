@@ -143,6 +143,11 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.squareup.okhttp3:okhttp-sse:4.12.0")
 
+    // bzip2 + tar streaming for the liteCloud runtime model installer
+    // (ModelInstaller.kt unpacks .tar.bz2 model archives on-device).
+    // Pure Java, ~500 KB — trivial next to the ~500 MB of models it unpacks.
+    implementation("org.apache.commons:commons-compress:1.26.1")
+
     // Sherpa-ONNX — local VAD / ASR / TTS inference (ONNX Runtime CPU, arm64-v8a).
     // Pulled as a local AAR via libs/ — see scripts/setup_models.sh.
     implementation(fileTree("libs") { include("*.aar") })

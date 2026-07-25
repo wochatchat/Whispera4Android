@@ -13,18 +13,26 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
 import com.whispera.android.config.AppConfig
+import com.whispera.android.config.ModelInstaller
 import com.whispera.android.config.ModelManager
 import com.whispera.android.asr.AsrEngine
 import com.whispera.android.tts.TtsEngine
 import com.whispera.android.vad.VadSession
 import com.whispera.android.pipeline.RealtimePipeline
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
 
     private lateinit var prefs: SharedPreferences
     private var config: AppConfig = AppConfig()
     private var pipeline: RealtimePipeline? = null
+
+    /** Live snapshot of the runtime model installer (null = never started).
+     *  Wrapped in a Compose-observable holder so the UI re-renders on every progress tick. */
+    private var installerSnapshot by mutableStateOf<ModelInstaller.Snapshot?>(null)
+    private var installer: ModelInstaller? = null
 
     private fun buildPipeline() {
         val cfg = config
@@ -60,7 +68,13 @@ class MainActivity : ComponentActivity() {
 
             val pipe = pipeline
             if (pipe == null) {
-                ConversationScreenUnready(settings = settings) { s -> persistSettings(s); settings = s }
+                ConversationScreenUnready(
+                    settings = settings,
+                    onUpdateSettings = { s -> persistSettings(s); settings = s },
+                    onInstallModels = { runModelInstaller { modelsReady = checkModelsReady() } },
+                    onCancelInstall = { installer?.cancel() },
+                    installerSnapshot = installerSnapshot,
+                )
             } else {
                 ConversationScreen(
                     pipeline = pipe,
@@ -77,8 +91,37 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        installer?.cancel()
         pipeline?.release()
         pipeline = null
+    }
+
+    /**
+     * Drives [ModelInstaller.installAll] off the main thread. Each progress snapshot
+     * is published to [installerSnapshot] (a Compose-observable property) so the
+     * unready screen's download panel re-renders live. On success (or if the user
+     * had sideloaded models in the meantime) [onDone] re-checks readiness, which
+     * flips the UI to the conversation screen via the [modelsReady] state holder.
+     */
+    private fun runModelInstaller(onDone: () -> Unit) {
+        if (installer != null) return            // already running
+        val inst = ModelInstaller(this)
+        installer = inst
+        lifecycleScope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                inst.installAll { snap -> installerSnapshot = snap }
+            }
+            installer = null
+            installerSnapshot = if (ok) {
+                ModelInstaller.Snapshot(ModelInstaller.Snapshot.Phase.DONE, "完成", 0, 0, "全部模型就绪")
+            } else {
+                // keep last snapshot visible so the user sees the failure message
+                installerSnapshot ?: ModelInstaller.Snapshot(
+                    ModelInstaller.Snapshot.Phase.FAILED, "?", 0, 0, "已取消或失败"
+                )
+            }
+            onDone()
+        }
     }
 
     private fun checkModelsReady(): Boolean {

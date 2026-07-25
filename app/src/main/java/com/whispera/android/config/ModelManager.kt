@@ -26,21 +26,58 @@ object ModelManager {
         val dirName: String,
         val required: List<String>,
         val label: String,
+        // --- Runtime installer fields (liteCloud UI) ---
+        /** Optional remote URL of an archive (.tar.bz2) OR a single raw file (when [extract]=false).
+         *  Null means this spec has no remote source (offlineFull bundles it instead). */
+        val url: String? = null,
+        /** True → the URL is a tar.bz2 whose first matching directory contains the files.
+         *  False → the URL is the file itself, written directly to dirName/<name in required>. */
+        val extract: Boolean = true,
+        /** When [extract]=true, the file inside the unpacked tarball is matched to [required]
+         *  by exact name; the (*.onnx / tokens.txt / voices.bin / lexicon.txt / espeak-ng-data/).
+         *  We list only leaf files we want; if [includeDirectory] is set we copy a whole subtree. */
+        val includeDirectory: String? = null,
+        /** Human-readable size hint shown in the download UI (purely cosmetic). */
+        val sizeHint: String = "",
     )
 
-    val VAD = ModelSpec("silero_vad", listOf("silero_vad.onnx"), "Silero VAD")
-    val ASR_SENSEVOICE = ModelSpec("sensevoice", listOf("model.int8.onnx", "tokens.txt"), "SenseVoice ASR (int8)")
+    val VAD = ModelSpec(
+        "silero_vad",
+        listOf("silero_vad.onnx"),
+        "Silero VAD",
+        url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx",
+        extract = false,
+        sizeHint = "~2 MB",
+    )
+    val ASR_SENSEVOICE = ModelSpec(
+        "sensevoice",
+        listOf("model.int8.onnx", "tokens.txt"),
+        "SenseVoice ASR (int8)",
+        url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2",
+        extract = true,
+        sizeHint = "~163 MB",
+    )
     val ASR_ZIPFORMER = ModelSpec(
         "zipformer",
         listOf("encoder-epoch-99-avg-1.onnx", "decoder-epoch-99-avg-1.onnx", "joiner-epoch-99-avg-1.onnx", "tokens.txt"),
         "Zipformer ASR",
+        url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23.tar.bz2",
+        extract = true,
+        sizeHint = "~74 MB",
     )
     val TTS_KOKORO = ModelSpec(
         "kokoro-multi-lang-v1_1",
         // espeak-ng-data/ is a directory; checked separately to avoid 1-file checklist pain.
         listOf("model.onnx", "tokens.txt", "voices.bin"),
         "Kokoro TTS v1.1",
+        url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_1.tar.bz2",
+        extract = true,
+        includeDirectory = "espeak-ng-data",
+        sizeHint = "~350 MB",
     )
+
+    /** Specs the liteCloud runtime installer must materialize, in download order. */
+    val INSTALL_ORDER: List<ModelSpec> = listOf(VAD, ASR_SENSEVOICE, TTS_KOKORO)
 
     fun rootDir(ctx: Context): File = File(ctx.filesDir, FILE_ROOT).also { it.mkdirs() }
     fun modelDir(ctx: Context, subDir: String): File = File(rootDir(ctx), subDir)
@@ -57,23 +94,22 @@ object ModelManager {
 
     fun isOnDisk(ctx: Context, spec: ModelSpec): Boolean {
         val dir = modelDir(ctx, spec.dirName)
-        return dir.isDirectory &&
-            spec.required.all { File(dir, it).exists() } &&
-            // espeak-ng-data/ must exist if listed alongside Kokoro specs (checked by presence as dir).
-            (!spec.required.contains("espeak-ng-data/") || File(dir, "espeak-ng-data").isDirectory)
+        if (!dir.isDirectory) return false
+        if (!spec.required.all { File(dir, it).exists() }) return false
+        // Optional full-directory component (e.g. espeak-ng-data/ for Kokoro).
+        spec.includeDirectory?.let { if (!File(dir, it).isDirectory) return false }
+        return true
     }
 
     private fun isInAssets(am: AssetManager, spec: ModelSpec): Boolean {
         return try {
             val list = am.list("${ASSET_ROOT}/${spec.dirName}") ?: return false
-            spec.required.all { requiredFile ->
-                if (requiredFile.endsWith("/")) {
-                    // Directory check (e.g. "espeak-ng-data/")
-                    list.any { it == requiredFile.trimEnd('/') }
-                } else {
-                    list.any { it == requiredFile }
-                }
+            if (!spec.required.all { list.any { entry -> entry == it } }) return false
+            // Optional full-directory component.
+            spec.includeDirectory?.let { dir ->
+                if (list.none { it == dir }) return false
             }
+            true
         } catch (e: Exception) {
             false
         }
