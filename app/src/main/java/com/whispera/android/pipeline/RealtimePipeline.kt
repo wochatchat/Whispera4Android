@@ -227,7 +227,8 @@ class RealtimePipeline(
                 vad.setGenerating(false)
                 _state.value = State.LISTENING
             } catch (t: Throwable) {
-                _partialAssistant.value = "[error: ${t.message ?: "unknown"}]"
+                android.util.Log.e("WhisperaTurn", "handleUserTurn FAILED", t)
+                _partialAssistant.value = "[error: ${t.message ?: t.javaClass.simpleName}]"
                 vad.setGenerating(false)
                 _state.value = State.LISTENING
             }
@@ -242,18 +243,32 @@ class RealtimePipeline(
             // gladly acceptable: we're feeding sentence-sized chunks, fine-grained on purpose.
             if (ttsJob?.isActive == true) ttsJob?.join()
             ttsJob = scope.launch(Dispatchers.IO) {
-                val track = ensureAudioTrack()
-                track.play()
-                tts.generateStreaming(
-                    text = sentence,
-                    sid = config.ttsSpeakerId,
-                    speed = config.ttsSpeed,
-                ) { samples ->
-                    synchronized(audioTrackLock) {
-                        val t = audioTrack ?: return@generateStreaming
-                        val pcm = ShortArray(samples.size) { (samples[it] * 32767f).toInt().toShort() }
-                        t.write(pcm, 0, pcm.size, AudioTrack.WRITE_BLOCKING)
+                try {
+                    val track = ensureAudioTrack()
+                    if (track.state != AudioTrack.STATE_INITIALIZED) {
+                        android.util.Log.e("WhisperaTTS", "AudioTrack NOT initialized: state=${track.state}")
+                        _partialAssistant.value = "[tts: AudioTrack state=${track.state}]"
+                        return@launch
                     }
+                    track.play()
+                    android.util.Log.i("WhisperaTTS", "TTS start: '$sentence' sr=${tts.sampleRate} sid=${config.ttsSpeakerId} speed=${config.ttsSpeed}")
+                    var chunks = 0
+                    tts.generateStreaming(
+                        text = sentence,
+                        sid = config.ttsSpeakerId,
+                        speed = config.ttsSpeed,
+                    ) { samples ->
+                        synchronized(audioTrackLock) {
+                            val t = audioTrack ?: return@generateStreaming
+                            val pcm = ShortArray(samples.size) { (samples[it] * 32767f).toInt().toShort() }
+                            t.write(pcm, 0, pcm.size, AudioTrack.WRITE_BLOCKING)
+                        }
+                        chunks++
+                    }
+                    android.util.Log.i("WhisperaTTS", "TTS done: chunks=$chunks")
+                } catch (t: Throwable) {
+                    android.util.Log.e("WhisperaTTS", "TTS FAILED", t)
+                    _partialAssistant.value = "[tts error: ${t.message ?: t.javaClass.simpleName}]"
                 }
             }
             ttsJob?.join()

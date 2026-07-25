@@ -80,11 +80,12 @@ class TtsEngine(
                         lexicon = lexicon,
                     ),
                     numThreads = 2,
-                    debug = false,
+                    debug = true,
                     provider = "cpu",
                 )
             )
             val tts = OfflineTts(assetManager = am, config = config)
+            android.util.Log.i("WhisperaTTS", "OfflineTts built: sampleRate=${tts.sampleRate()} numSpeakers=${tts.numSpeakers()} onDisk=$onDisk am=${if (am == null) "null" else "assets"} dir=$dirPrefix lexicon=$lexicon dataDir=$dataDir")
             return TtsEngine(tts = tts, sampleRate = tts.sampleRate())
         }
 
