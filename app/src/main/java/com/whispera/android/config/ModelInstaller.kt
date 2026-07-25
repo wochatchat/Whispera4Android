@@ -70,21 +70,21 @@ class ModelInstaller(
         cancelled = false
         for (spec in ModelManager.INSTALL_ORDER) {
             if (ModelManager.isOnDisk(ctx, spec)) {
-                onProgress(Snapshot(Phase.DONE, spec.label, 0, 0, "${spec.label} 已存在"))
+                onProgress(Snapshot(Snapshot.Phase.DONE, spec.label, 0, 0, "${spec.label} 已存在"))
                 continue
             }
             val ok = try {
                 installOne(spec, onProgress)
             } catch (t: Throwable) {
-                onProgress(Snapshot(Phase.FAILED, spec.label, 0, 0, "${spec.label}: ${t.message ?: t.javaClass.simpleName}"))
+                onProgress(Snapshot(Snapshot.Phase.FAILED, spec.label, 0, 0, "${spec.label}: ${t.message ?: t.javaClass.simpleName}"))
                 return false
             }
             if (!ok) {
-                onProgress(Snapshot(Phase.FAILED, spec.label, 0, 0, "${spec.label}: 取消"))
+                onProgress(Snapshot(Snapshot.Phase.FAILED, spec.label, 0, 0, "${spec.label}: 取消"))
                 return false
             }
         }
-        onProgress(Snapshot(Phase.DONE, "全部完成", 0, 0, "全部模型安装完成"))
+        onProgress(Snapshot(Snapshot.Phase.DONE, "全部完成", 0, 0, "全部模型安装完成"))
         return true
     }
 
