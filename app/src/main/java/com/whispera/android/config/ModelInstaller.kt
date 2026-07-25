@@ -155,10 +155,10 @@ class ModelInstaller(
         if (spec.copyLeafTo.isEmpty()) return
         val present = outDir.listFiles()?.map { it.name }?.toSet() ?: emptySet()
         for (rule in spec.copyLeafTo) {
-            val (glob, dest) = rule.split("->", limit = 2).let {
-                if (it.size != 2) return@for
-                it[0].trim() to it[1].trim()
-            }
+            val parts = rule.split("->", limit = 2)
+            if (parts.size != 2) continue
+            val glob = parts[0].trim()
+            val dest = parts[1].trim()
             if (present.contains(dest)) continue
             val src = outDir.listFiles()?.firstOrNull { globMatch(glob, it.name) } ?: continue
             try {
