@@ -119,15 +119,52 @@ class ModelInstaller(
                     if (!entry.isDirectory) {
                         val baseName = File(entry.name).name
                         val wanted: Boolean = spec.required.any { it == baseName } ||
-                            (spec.includeDirectory != null && entry.name.contains(spec.includeDirectory + "/"))
+                            (spec.includeDirectory != null && entry.name.contains(spec.includeDirectory + "/")) ||
+                            spec.extraGlob.any { g -> globMatch(g, baseName) }
                         if (wanted) {
                             unpack(tar, entry, outDir, spec, onProgress, teeing.count, total)
                         }
                     }
                 }
+                // After unpacking, materialize any conenience aliases (e.g. lexicon.txt
+                // from lexicon-zh.txt) so the engine's hardcoded path resolves.
+                applyCopyLeafTo(outDir, spec)
             }
         }
         return true
+    }
+
+    /** Trivial glob matcher: `*` matches run-of-chars, `?` matches one. No escapes. */
+    private fun globMatch(pattern: String, name: String): Boolean {
+        val p = pattern.toCharArray(); val n = name.toCharArray()
+        var pi = 0; var ni = 0; var starPi = -1; var starNi = 0
+        while (ni < n.size) {
+            if (pi < p.size && (p[pi] == '?' || p[pi] == n[ni])) { pi++; ni++ }
+            else if (pi < p.size && p[pi] == '*') { starPi = pi; starNi = ni; pi++ }
+            else if (starPi != -1) { pi = starPi + 1; starNi++; ni = starNi }
+            else return false
+        }
+        while (pi < p.size && p[pi] == '*') pi++
+        return pi == p.size
+    }
+
+    /** For each "<glob>-><destName>" in [ModelSpec.copyLeafTo], if <destName> is missing
+     *  and any file matching <glob> exists in [outDir], copy the first such file to <destName>.
+     *  Mirrors scripts/setup_models.sh's lexicon.txt fallback. */
+    private fun applyCopyLeafTo(outDir: File, spec: ModelManager.ModelSpec) {
+        if (spec.copyLeafTo.isEmpty()) return
+        val present = outDir.listFiles()?.map { it.name }?.toSet() ?: emptySet()
+        for (rule in spec.copyLeafTo) {
+            val (glob, dest) = rule.split("->", limit = 2).let {
+                if (it.size != 2) return@for
+                it[0].trim() to it[1].trim()
+            }
+            if (present.contains(dest)) continue
+            val src = outDir.listFiles()?.firstOrNull { globMatch(glob, it.name) } ?: continue
+            try {
+                src.copyTo(File(outDir, dest), overwrite = false)
+            } catch (_: Exception) { /* best-effort */ }
+        }
     }
 
     /** Copy one tar entry to disk; emit an EXTRACTING snapshot. */

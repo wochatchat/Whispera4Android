@@ -37,6 +37,17 @@ object ModelManager {
          *  by exact name; the (*.onnx / tokens.txt / voices.bin / lexicon.txt / espeak-ng-data/).
          *  We list only leaf files we want; if [includeDirectory] is set we copy a whole subtree. */
         val includeDirectory: String? = null,
+        /** Extra leaf-file glob patterns to also unpack from the tarball but NOT count toward
+         *  the [required] presence check (so we don't force a re-download just because a
+         *  convenience symlink is absent). Patterns use `*` and `?` and match the leaf name
+         *  only — e.g. "lexicon-*.txt" pulls in all Kokoro language lexicons while [required]
+         *  stays {model.onnx, tokens.txt, voices.bin}. */
+        val extraGlob: List<String> = emptyList(),
+        /** If set, after unpacking copy `<dirName>/<copyLeafTo>` from the first file matching any
+         *  [extraGlob] pattern, so the engine's hardcoded path lands on a real file. When a
+         *  Kokoro model ships lexicon-zh.txt etc. (no lexicon.txt), this bridges apps that
+         *  load by the latter name. Format: "<pat>-><destName>" e.g. "lexicon-*.txt->lexicon.txt". */
+        val copyLeafTo: List<String> = emptyList(),
         /** Human-readable size hint shown in the download UI (purely cosmetic). */
         val sizeHint: String = "",
     )
@@ -73,6 +84,11 @@ object ModelManager {
         url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_1.tar.bz2",
         extract = true,
         includeDirectory = "espeak-ng-data",
+        // Kokoro v1.1 ships lexicon-zh.txt / lexicon-gb-en.txt / lexicon-us-en.txt rather
+        // than a single lexicon.txt — pull all of them in and synthesize a lexicon.txt
+        // link/alias so the engine's hardcoded path resolves (mirrors setup_models.sh).
+        extraGlob = listOf("lexicon-*.txt"),
+        copyLeafTo = listOf("lexicon-*.txt->lexicon.txt"),
         sizeHint = "~350 MB",
     )
 
