@@ -47,6 +47,12 @@ fun ConversationScreen(
     var showSettings by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
+    // Detect the default unconfigured LLM endpoint (no API key, pointing at localhost)
+    // — the App won't get any reply without a remote LLM or a local llama-server. Surface
+    // this prominently instead of the cryptic [error: ...] red bubble alone.
+    val llmUnconfigured = settings.llmApiKey.isBlank() &&
+        settings.llmBaseUrl.startsWith("http://127.0.0.1")
+
     val micLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted -> micGranted = granted }
@@ -76,6 +82,10 @@ fun ConversationScreen(
                 .padding(padding)
                 .padding(horizontal = 12.dp)
         ) {
+            if (llmUnconfigured) {
+                LlmUnconfiguredBanner(onOpenSettings = { showSettings = true })
+                Spacer(Modifier.height(8.dp))
+            }
             LazyColumn(
                 modifier = Modifier.weight(1f),
                 reverseLayout = true,
@@ -149,6 +159,36 @@ private fun StateChip(state: RealtimePipeline.State) {
         shape = RoundedCornerShape(10.dp),
     ) {
         Text(label, color = color, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+    }
+}
+
+@Composable
+private fun LlmUnconfiguredBanner(onOpenSettings: () -> Unit) {
+    Surface(
+        color = Color(0xFF7F1D1D).copy(alpha = 0.85f),
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                "⚠ 未配置 \"大脑\" — 听不到回复",
+                color = Color(0xFFFEE2E2),
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "本App内置语音识别和语音合成，但没有内置大语言模型。" +
+                    "请点击右上角 ⚙ 填入一个 OpenAI 兼容的 API 地址（如 https://api.deepseek.com/v1）" +
+                    "和 API Key（无需本地模型）。或在本机起 llama-server（参考 README）。",
+                color = Color(0xFFFCA5A5),
+                fontSize = 12.sp,
+            )
+            Spacer(Modifier.height(8.dp))
+            TextButton(onClick = onOpenSettings, contentPadding = PaddingValues(0.dp)) {
+                Text("打开设置", fontSize = 13.sp, color = Color(0xFFFCA5A5), fontWeight = FontWeight.SemiBold)
+            }
+        }
     }
 }
 
