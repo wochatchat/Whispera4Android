@@ -110,6 +110,18 @@ android {
         // sherpa-onnx AAR contains native libs we must keep.
         jniLibs.useLegacyPackaging = true
     }
+
+    // Keep bundled ONNX/raw assets uncompressed.
+    // Rationale: CompressAssetsWorkAction reads each asset fully into the JVM
+    // heap to gzip it. With ~500 MB of ONNX models (SenseVoice int8 163 MB +
+    // Kokoro v1.1 350 MB + silero_vad 2 MB) that used to OOM at -Xmx2g, and
+    // even at 4g the compression buys <5% on already-quantized ONNX weight
+    // blobs — so we skip it. `noCompress` also keeps models mmap-able at
+    // runtime (Android can mmap uncompressed assets directly from the APK
+    // via AssetManager.openFd()).
+    androidResources {
+        noCompress.addAll(listOf("onnx", "bin", "txt", "tokens"))
+    }
 }
 
 dependencies {
